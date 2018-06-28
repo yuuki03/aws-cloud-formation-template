@@ -1,0 +1,119 @@
+---
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Create Kinesisfirehose Delivery Stream
+
+Parameters:
+  KinesisFirehoseDeliveryStreamName:
+    Description: Kinesis firehose DeliveryStream name.
+    NoEcho: false
+    Type: String
+    MinLength: 1
+    MaxLength: 124
+    AllowedPattern: "[A-Za-z0-9_.-]*"
+  KinesisFirehoseDeliveryStreamType:
+    Description: DirectPut or KinesisStreamAsSource.
+    Type: String
+    AllowedValues:
+      - DirectPut
+      - KinesisStreamAsSource
+  DestinationS3BucketArn:
+    Description: S3 Bucket arn of destination KinesisFirehose.
+    Type: String
+  KinesisFirehoseBufferingIntervalInSeconds:
+    Description: The length of time, in seconds, that Kinesis Firehose buffers incoming data before delivering it to the destination.
+    Type: Number
+    MinValue: 60
+    MaxValue: 900
+  KinesisFirehoseBufferingSizeInMBs:
+    Description: The size of the buffer, in MBs, that Kinesis Firehose uses for incoming data before delivering it to the destination.
+    Type: Number
+    MinValue: 1
+    MaxValue: 100
+  KinesisFirehoseOutputErrorLogGroupName:
+    Description: The name of the CloudWatch Logs log group that contains the log stream that Kinesis Firehose will use.
+    Type: String
+    AllowedPattern: "[A-Za-z0-9_.-]*"
+  KinesisFirehoseOutputErrorLogStreamName:
+    Description: The name of the CloudWatch Logs log stream that Kinesis Firehose uses to send logs about data delivery.
+    Type: String
+    AllowedPattern: "[A-Za-z0-9_.-]*"
+  KinesisFirehoseCompressionFormat:
+    Description: The compression format.
+    Type: String
+    AllowedValues:
+      - UNCOMPRESSED
+      - GZIP
+      - ZIP
+      - Snappy
+  KinesisFIrehoseToS3Prefix:
+    Description: A prefix that Kinesis Firehose adds to the files that it delivers to the Amazon S3 bucket.
+    Type: String
+    AllowedPattern: "[A-Za-z0-9_.-]*/"
+  KinesisFirehoseIAMRoleName:
+    Description: A name for the IAM role.
+    Type: String
+    AllowedPattern: "[A-Za-z0-9_.-]*"
+
+Resources:
+  KinesisFirehose:
+    Type: AWS::KinesisFirehose::DeliveryStream
+    Properties:
+      DeliveryStreamName: !Ref KinesisFirehoseDeliveryStreamName
+      DeliveryStreamType: !Ref KinesisFirehoseDeliveryStreamType
+      S3DestinationConfiguration:
+        BucketARN: !Ref DestinationS3BucketArn
+        BufferingHints:
+          IntervalInSeconds: !Ref KinesisFirehoseBufferingIntervalInSeconds
+          SizeInMBs: !Ref KinesisFirehoseBufferingSizeInMBs
+        CloudWatchLoggingOptions:
+          Enabled: true
+          LogGroupName: !Ref KinesisFirehoseOutputErrorLogGroupName
+          LogStreamName: !Ref KinesisFirehoseOutputErrorLogStreamName
+        CompressionFormat: !Ref KinesisFirehoseCompressionFormat
+        Prefix: !Ref KinesisFIrehoseToS3Prefix
+        RoleARN: !GetAtt IAMRole.Arn
+  IAMRole:
+    Type: AWS::IAM::Role
+    DeletionPolicy: Retain
+    Properties:
+      Path: /
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: firehose.amazonaws.com
+            Action: "sts:AssumeRole"
+            Condition:
+              StringEquals:
+                sts:ExternalId: !Ref AWS::AccountId
+      Policies:
+        - PolicyName: Permissions-Policy-For-Firehose
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:AbortMultipartUpload
+                  - s3:Get*
+                  - s3:Put*
+                  - s3:List*
+                  - s3:PutObjectAcl
+                  - s3:PutObjectVersionAcl
+                Resource:
+                  - !Sub ${DestinationS3BucketArn}
+                  - !Sub ${DestinationS3BucketArn}/*
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:CreateLogGroup
+                  - logs:PutLogEvents
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - firehose:DeleteDeliveryStream
+                  - firehose:PutRecord
+                  - firehose:PutRecordBatch
+                  - firehose:UpdateDestination
+                Resource: !Sub arn:aws:firehose:${AWS::Region}:${AWS::AccountId}:deliverystream/${KinesisFirehoseDeliveryStreamName}
+      RoleName: !Ref KinesisFirehoseIAMRoleName
