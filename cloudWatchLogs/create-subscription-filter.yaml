@@ -1,0 +1,57 @@
+---
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Create  CloudWatchLogs subscription filter.
+
+Parameters:
+  KinesisFirehoseDeliverystreamName:
+    Description: KinesisFirehoseDeliverystreamName
+    Type: String
+  CWLtoKinesisFirehoseIAMRoleName:
+    Description: Name of IAM Role used by CloudWatchLogs
+    Type: String
+  CWLFilterPattern:
+    Type: String
+    Default: ''
+  CWLtargetLogGroupName:
+    Description: cloudwatchLogs group name
+    Type: String
+
+#Mappings:
+
+Resources:
+  cloudWatchtoKinesisRole:
+    Type: AWS::IAM::Role
+    DeletionPolicy: Retain
+    Properties:
+      Path: /
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: logs.amazonaws.com
+            Action: "sts:AssumeRole"
+      Policies:
+        - PolicyName: Permissions-Policy-For-CWL
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - firehose:*
+                Resource: !Sub arn:aws:firehose:${AWS::Region}:${AWS::AccountId}:deliverystream/${KinesisFirehoseDeliverystreamName}
+      RoleName: !Ref CWLtoKinesisFirehoseIAMRoleName
+  CWLSubscriptionFilter:
+    Type: "AWS::Logs::SubscriptionFilter"
+    Properties:
+      DestinationArn: !Sub arn:aws:firehose:${AWS::Region}:${AWS::AccountId}:deliverystream/${KinesisFirehoseDeliverystreamName}
+      FilterPattern: !Ref CWLFilterPattern
+      LogGroupName: !Ref CWLtargetLogGroupName
+      RoleArn: !GetAtt cloudWatchtoKinesisRole.Arn
+
+Outputs:
+  createdIAMRoleArn:
+    Description: It does not automatically delete.
+    Value: !GetAtt cloudWatchtoKinesisRole.Arn
+    Export:
+      Name: cloudWatchtoKinesisRoleArn
