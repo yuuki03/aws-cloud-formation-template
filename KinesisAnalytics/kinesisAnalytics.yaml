@@ -1,0 +1,91 @@
+---
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: "AWS::Serverless-2016-10-31"
+Description: "Create KinesisAnalytics apps."
+Parameters:
+  KinesisAnalyticsAplicationName:
+    Description: "KinesisAnalyticsAplicationName"
+    Type: "String"
+  KinesisAnalyticsAplicationDescription:
+    Description: "AplicationDescription"
+    Type: "String"
+    Default: ""
+  InputSorceKinesisFirehoseARN:
+    Description: "KinesisFirehoseARN"
+    Type: "String"
+  InputProcessingLambdaFunctionARN:
+    Description: "LambdaFunctionARN"
+    Type: "String"
+Resources:
+  KinsisAnalyticsApplication:
+    Type: "AWS::KinesisAnalytics::Application"
+    Properties:
+      ApplicationName: !Ref KinesisAnalyticsAplicationName
+      ApplicationDescription: !Ref KinesisAnalyticsAplicationDescription
+      Inputs:
+        - NamePrefix: "SOURCE_CWL_STREAM"
+          InputSchema:
+            RecordColumns:
+             - Mapping: "$.messageType"
+               Name: "MESSAGE_TYPE"
+               SqlType: "VARCHAR(16)"
+             - Mapping: "$.owner"
+               Name: "OWNER"
+               SqlType: "BIGINT"
+             - Mapping: "$.logGroup"
+               Name: "LOG_GROUP"
+               SqlType: "VARCHAR(64)"
+             - Mapping: "$.logStream"
+               Name: "LOG_STREAM"
+               SqlType: "VARCHAR(64)"
+             - Mapping: "$.logEvents[0:].id"
+               Name: "ID"
+               SqlType: "DOUBLE"
+             - Mapping: "$.logEvents[0:].timestamp"
+               Name: "LOG_EVENT_TIMESTAMP"
+               SqlType: "BIGINT"
+             - Mapping: "$.logEvents[0:].message"
+               Name: "LOG_MESSAGE"
+               SqlType: "VARCHAR(1024)"
+            RecordFormat:
+              RecordFormatType: "JSON"
+              MappingParameters:
+                JSONMappingParameters:
+                  RecordRowPath: "$"
+            RecordEncoding: "UTF-8"
+          KinesisFirehoseInput:
+            ResourceARN: !Ref InputSorceKinesisFirehoseARN
+            RoleARN: !GetAtt KinesisAnalyticsRole.Arn
+          InputProcessingConfiguration:
+            InputLambdaProcessor:
+              ResourceARN: !Ref InputProcessingLambdaFunctionARN
+              RoleARN: !GetAtt KinesisAnalyticsRole.Arn
+  KinesisAnalyticsRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      Path: "/"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: kinesisanalytics.amazonaws.com
+            Action: "sts:AssumeRole"
+      Policies:
+        - PolicyName: Permissions-Policy-For-KinesisAnalytics
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                   - "firehose:DescribeDeliveryStream"
+                   - "firehose:Get*"
+                Resource: !Ref InputSorceKinesisFirehoseARN
+              - Effect: Allow
+                Action:
+                   - "lambda:InvokeFunction"
+                   - "lambda:GetFunctionConfiguration"
+                Resource: "*"
+Outputs:
+  ApplicationResourceARN:
+    Value: !GetAtt KinesisAnalyticsRole.Arn
